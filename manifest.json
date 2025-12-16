@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Calculadora de Média",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Calculadora de média",
   "action": {
     "default_popup": "popup.html"
