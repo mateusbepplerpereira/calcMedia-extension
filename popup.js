@@ -201,16 +201,23 @@ document.addEventListener('DOMContentLoaded', function() {
       // Salvar a nota original da tabela
       task.originalGrade = task.grade;
       
-      // Se tiver uma nota salva no localStorage para esta tarefa
-      if (savedGrades[task.name]) {
-        // Se a nota original (da tabela) não está definida ou é igual a -
-        // OU se a nota foi definida manualmente pelo usuário
-        if (task.originalGrade === null || savedGrades[task.name].manuallySet) {
+      // Lógica de Prioridade: A nota oficial (da página) SEMPRE prevalece sobre o localStorage
+      if (task.originalGrade !== null) {
+        // Se existe nota oficial, usamos ela e desmarcamos o manuallySet
+        task.manuallySet = false;
+        // task.grade já vem preenchido corretamente da extração
+      } else {
+        // Se NÃO existe nota oficial, verificamos se o usuário salvou algo
+        if (savedGrades[task.name]) {
           task.grade = savedGrades[task.name].grade;
           task.manuallySet = savedGrades[task.name].manuallySet;
         }
       }
     });
+
+    // Salvar o estado atualizado no localStorage
+    // Isso garante que se uma nota oficial saiu, o localStorage seja corrigido (removendo a nota manual antiga)
+    saveGradesToLocalStorage(tasks);
     
     renderTasks(tasks);
     calculateAndDisplayAverage(tasks);
@@ -228,6 +235,10 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Função para renderizar as tarefas
   function renderTasks(tasks) {
+    // Salvar o elemento que tem foco atualmente para tentar restaurar (se possível)
+    const activeElement = document.activeElement;
+    const focusedIndex = activeElement && activeElement.classList.contains('grade-input') ? activeElement.dataset.index : null;
+
     taskListElement.innerHTML = '';
     
     tasks.forEach((task, index) => {
@@ -268,6 +279,11 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Adicionar event listeners para os inputs de nota
     document.querySelectorAll('.grade-input').forEach(input => {
+      // Se havia um input focado e é este o índice, restaurar o foco
+      if (focusedIndex && input.dataset.index === focusedIndex) {
+          input.focus();
+      }
+
       // Só adicionar event listener para inputs que não são readonly
       if (!input.hasAttribute('readonly')) {
         input.addEventListener('input', function() {
@@ -381,4 +397,7 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Iniciar o processo de busca de tarefas
   fetchTasks();
+
+  // Atualização periódica a cada 5 minutos (300000 ms)
+  setInterval(fetchTasks, 300000);
 });
