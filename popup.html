@@ -1,283 +1,231 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
-  <title>Tarefas</title>
+  <title>Calculadora de Média</title>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- Adicionar fonte Montserrat apenas -->
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <!-- Remover Bootstrap CDN e usar apenas CSS interno -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg: #0d0f14;
+      --surface: #161a22;
+      --surface-2: #1e232d;
+      --border: #2a313d;
+      --text: #e7eaf0;
+      --muted: #8b95a5;
+      --faint: #5c6675;
+      --accent: #5b8cff;
+      --green: #3fb950;
+      --red: #f85149;
+      --artefato: #a371f7;
+      --ponderada: #58a6ff;
+      --prova: #e3a008;
+    }
+    * { box-sizing: border-box; }
     body {
       font-family: 'Montserrat', sans-serif;
-      width: 500px;
+      width: 400px;
       margin: 0;
-      padding: 0;
-      background-color: #f8f9fa;
-      display: flex;
-      flex-direction: column;
-    }
-    .container {
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      height: calc(100% - 70px); /* Altura total menos o header */
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
     }
     .header {
-      background-color: #3498db;
-      color: white;
-      padding: 15px 20px;
-      border-radius: 0 0 10px 10px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-      z-index: 10;
-    }
-    h1 {
-      font-size: 22px;
-      font-weight: 600;
-      margin: 0;
-    }
-    .task-list-container {
-      flex: 1;
-      overflow: hidden;
-      margin-bottom: 15px;
-      position: relative;
-    }
-    .task-list {
-      height: 100%;
-      overflow-y: auto;
-      padding-right: 5px;
-      scrollbar-width: thin;
-      scrollbar-color: #3498db #f8f9fa;
-    }
-    .task-list::-webkit-scrollbar {
-      width: 8px;
-    }
-    .task-list::-webkit-scrollbar-track {
-      background: #f1f1f1;
-      border-radius: 10px;
-    }
-    .task-list::-webkit-scrollbar-thumb {
-      background: #3498db;
-      border-radius: 10px;
-    }
-    .task-item {
-      background-color: white;
-      border-radius: 8px;
-      padding: 12px 15px;
-      margin-bottom: 10px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-      border-left: 4px solid #3498db;
-      transition: transform 0.2s ease;
-    }
-    .task-item:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 3px 5px rgba(0,0,0,0.1);
-    }
-    .task-header {
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      gap: 10px;
+      padding: 16px 18px 12px;
+    }
+    .logo {
+      width: 30px; height: 30px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--artefato));
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 15px; color: #fff;
+    }
+    h1 { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: -0.2px; }
+    .header small { display: block; font-size: 11px; font-weight: 500; color: var(--faint); }
+
+    .container { padding: 0 14px 14px; }
+
+    /* ---------- Média ---------- */
+    .average-card {
+      background: linear-gradient(160deg, var(--surface-2), var(--surface));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .average-label {
+      font-size: 11px; font-weight: 600; letter-spacing: 1px;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .average-value { font-size: 42px; font-weight: 800; line-height: 1.1; margin-top: 2px; }
+    .average-sub { font-size: 12px; font-weight: 500; color: var(--muted); margin-top: 4px; }
+    .average-bar {
+      height: 6px; border-radius: 6px; background: var(--surface);
+      margin-top: 12px; overflow: hidden; border: 1px solid var(--border);
+    }
+    .average-bar > span { display: block; height: 100%; background: var(--green); transition: width .35s ease, background .35s ease; }
+
+    /* ---------- Botões ---------- */
+    /* ---------- Seletor de grupo ---------- */
+    .group-select { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .group-select-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+    .seg {
+      display: flex; flex: 1; gap: 4px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 4px;
+    }
+    .seg button {
+      flex: 1; padding: 7px 0; font-size: 13px; font-weight: 700;
+      border: none; border-radius: 7px; background: transparent; color: var(--muted);
+    }
+    .seg button:hover { color: var(--text); }
+    .seg button.active { background: var(--accent); color: #fff; }
+    .group-effect { font-weight: 600; color: var(--faint); }
+
+    .actions { display: flex; gap: 8px; margin-bottom: 14px; }
+    button {
+      font-family: inherit; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 12px; font-size: 12.5px; transition: .15s;
+      background: var(--surface-2); color: var(--text);
+    }
+    button:hover { border-color: var(--accent); }
+    .btn-primary { flex: 1; background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-ghost:hover { border-color: var(--red); color: var(--red); }
+
+    /* ---------- Lista ---------- */
+    .task-list { max-height: 420px; overflow-y: auto; padding-right: 4px; }
+    .task-list::-webkit-scrollbar { width: 7px; }
+    .task-list::-webkit-scrollbar-track { background: transparent; }
+    .task-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+    .task-list::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+
+    .group { margin-bottom: 14px; }
+    .group-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 2px 8px; position: sticky; top: 0; background: var(--bg); z-index: 2;
+    }
+    .group-title {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
+    }
+    .group-title::before { content: ""; width: 9px; height: 9px; border-radius: 3px; }
+    .group-artefato  .group-title::before { background: var(--artefato); }
+    .group-ponderada .group-title::before { background: var(--ponderada); }
+    .group-prova     .group-title::before { background: var(--prova); }
+    .group-weight { font-size: 11px; font-weight: 600; color: var(--muted); }
+
+    .task-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--border);
+      border-radius: 11px;
+      padding: 11px 13px;
       margin-bottom: 8px;
     }
-    .task-name {
-      font-weight: 600;
-      color: #333;
-      margin-right: 10px;
-      flex-grow: 1;
-      font-size: 17px; /* Tamanho maior */
-    }
-    .task-grade-container {
-      display: flex;
-      align-items: center;
-    }
-    .grade-weight {
-      font-size: 16px; /* Tamanho maior */
-      color: #555;
-      margin-right: 8px;
-      font-weight: 500;
-    }
+    .group-artefato  .task-item { border-left-color: var(--artefato); }
+    .group-ponderada .task-item { border-left-color: var(--ponderada); }
+    .group-prova     .task-item { border-left-color: var(--prova); }
+
+    .task-top { display: flex; align-items: flex-start; gap: 10px; }
+    .task-name { font-size: 13px; font-weight: 600; line-height: 1.35; flex: 1; }
+
     .grade-input {
-      width: 65px;
-      text-align: center;
-      padding: 6px;
-      border: 1px solid #ced4da;
-      border-radius: 4px;
-      font-size: 15px; /* Tamanho maior */
+      width: 58px; flex-shrink: 0; text-align: center;
+      padding: 7px 4px; font-family: inherit; font-size: 15px; font-weight: 700;
+      background: var(--surface-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
     }
-    /* Estilo para inputs readonly (já com nota na tabela) */
-    .grade-input[readonly] {
-      background-color: #f8f9fa;
-      border: 1px solid #ddd;
-      color: #495057;
-      cursor: not-allowed;
-      box-shadow: none;
-      opacity: 0.8;
+    .grade-input:focus { outline: none; border-color: var(--accent); }
+    .grade-input::placeholder { color: var(--faint); font-weight: 600; }
+    .grade-input[readonly] { background: transparent; color: var(--green); cursor: default; border-color: transparent; }
+
+    .task-meta { display: flex; align-items: center; gap: 7px; margin-top: 9px; flex-wrap: wrap; }
+    .weight-badge {
+      display: inline-flex; align-items: baseline; gap: 3px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      padding: 3px 8px; border-radius: 7px; font-size: 11px; font-weight: 600; color: var(--muted);
     }
-    /* Adicionar um ícone ou indicador visual */
-    .grade-input-container {
-      position: relative;
-      display: inline-block;
+    .weight-badge b { font-size: 13px; font-weight: 800; color: var(--text); }
+    .week { font-size: 11px; color: var(--faint); font-weight: 500; }
+    .task-status { margin-left: auto; padding: 3px 9px; border-radius: 7px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
+    .status-a-fazer { background: rgba(227,160,8,.14); color: #e3a008; }
+    .status-fazendo { background: rgba(88,166,255,.14); color: #58a6ff; }
+    .status-feito   { background: rgba(63,185,80,.14); color: #3fb950; }
+
+    /* ---------- Estados ---------- */
+    .loading { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+    .spinner {
+      width: 26px; height: 26px; margin: 0 auto 14px;
+      border: 3px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.9s linear infinite;
     }
-    .grade-input-container.locked::after {
-      display: block;
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .empty {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 18px; font-size: 13px; line-height: 1.6; color: var(--muted);
     }
-    .task-details {
-      display: flex;
-      justify-content: space-between;
-      font-size: 14px; /* Tamanho maior */
-    }
-    .task-weight {
-      color: #555;
-      font-weight: 500;
-    }
-    .task-status {
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-size: 13px; /* Tamanho maior */
-      font-weight: 500;
-    }
-    .status-a-fazer {
-      background-color: #fff3cd;
-      color: #856404;
-    }
-    .status-fazendo {
-      background-color: #cce5ff;
-      color: #004085;
-    }
-    .status-feito {
-      background-color: #d4edda;
-      color: #155724;
-    }
-    .average-container {
-      background-color: white;
-      border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 15px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-      text-align: center;
-      position: sticky;
-      top: 0;
-      z-index: 5;
-    }
-    .average-header {
-      font-weight: 600;
-      margin-bottom: 10px;
-      color: #333;
-      font-size: 16px; /* Tamanho maior */
-    }
-    .average-value {
-      font-size: 28px; /* Tamanho maior */
-      font-weight: 700;
-      transition: color 0.3s ease;
-    }
-    .default-grade-btn {
-      width: 100%;
-      padding: 12px; /* Maior padding */
-      background-color: #28a745;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background-color 0.2s;
-      margin-bottom: 15px;
-      font-size: 15px; /* Tamanho maior */
-      position: sticky;
-      top: 0;
-      z-index: 5;
-    }
-    .default-grade-btn:hover {
-      background-color: #218838;
-    }
-    .reload-btn {
-      width: 100%;
-      padding: 12px; /* Maior padding */
-      background-color: #3498db;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background-color 0.2s;
-      font-size: 15px; /* Tamanho maior */
-    }
-    .reload-btn:hover {
-      background-color: #2980b9;
-    }
-    .alert {
-      border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 15px;
-    }
-    .alert-info {
-      background-color: #d1ecf1;
-      border-color: #bee5eb;
-      color: #0c5460;
-    }
-    .alert-warning {
-      background-color: #fff3cd;
-      border-color: #ffeeba;
-      color: #856404;
-    }
-    .loading {
-      text-align: center;
-      padding: 30px 20px;
-      color: #666;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      font-size: 15px; /* Tamanho maior */
-    }
-    .loading-spinner {
-      border: 4px solid #f3f3f3;
-      border-top: 4px solid #3498db;
-      border-radius: 50%;
-      width: 30px;
-      height: 30px;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 15px;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
+    .empty strong { color: var(--text); }
+    .empty ol { margin: 10px 0 0; padding-left: 18px; }
+    .empty li { margin-bottom: 6px; }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>Tarefas</h1>
+    <div class="logo">M</div>
+    <div>
+      <h1>Calculadora de Média</h1>
+      <small>Adalove · academic-life</small>
+    </div>
   </div>
-  
+
   <div class="container">
-    <!-- Média e botão sempre visíveis no topo -->
-    <div id="averageContainer" class="average-container">
-      <div class="average-header">Média Geral <small>(Mínimo para aprovação: 7.00)</small></div>
+    <div class="group-select">
+      <span class="group-select-label">Grupo</span>
+      <div class="seg" id="groupSeg">
+        <button type="button" data-group="A">A</button>
+        <button type="button" data-group="B">B</button>
+        <button type="button" data-group="C">C</button>
+        <button type="button" data-group="D">D</button>
+        <button type="button" data-group="E">E</button>
+      </div>
+    </div>
+
+    <div id="averageContainer" class="average-card">
+      <div class="average-label">Média final <span id="groupEffect" class="group-effect"></span></div>
       <div id="averageValue" class="average-value">0.00</div>
+      <div id="averageSub" class="average-sub">Mínimo para aprovação: 7.00</div>
+      <div class="average-bar"><span id="averageBar" style="width:0%"></span></div>
     </div>
-    
-    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-      <button id="defaultGradeBtn" class="default-grade-btn" style="margin-bottom: 0;">Atribuir nota 7 para atividades sem nota</button>
-      <button id="clearGradesBtn" class="reload-btn" style="background-color: #dc3545;">Limpar</button>
+
+    <div class="actions">
+      <button type="button" id="defaultGradeBtn" class="btn-primary">Simular 7 nas pendentes</button>
+      <button type="button" id="clearGradesBtn" class="btn-ghost">Limpar</button>
     </div>
-    
+
     <div id="message" class="loading">
-      <div class="loading-spinner"></div>
-      <div>Carregando tarefas...</div>
+      <div class="spinner"></div>
+      <div>Carregando notas…</div>
     </div>
-    
-    <!-- Novo container para scrolling -->
-    <div id="taskListContainer" class="task-list-container" style="display: none;">
-      <div id="taskList" class="task-list"></div>
+
+    <div id="taskListContainer" class="task-list" style="display: none;">
+      <div id="taskList"></div>
     </div>
-    
+
     <div id="reloadContainer" style="display: none;">
-      <div class="alert alert-info">
-        <p style="font-size: 18px;"><strong>Tabela não encontrada!</strong> Para visualizar suas tarefas:</p>
-        <ol style="font-size: 15px;">
-          <li>Acesse a página <strong>academic-life</strong> no módulo</li>
-          <li>Clique na aba <strong>Notas</strong> para tornar a tabela visível</li>
+      <div class="empty">
+        <strong>Nenhuma nota capturada ainda.</strong>
+        <ol>
+          <li>Acesse a página <strong>academic-life</strong> no módulo (basta abrir).</li>
+          <li>As notas são capturadas automaticamente em segundo plano.</li>
+          <li>Reabra esta janela — elas aparecem aqui de qualquer aba.</li>
         </ol>
       </div>
     </div>

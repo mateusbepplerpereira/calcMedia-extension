@@ -3,13 +3,28 @@ document.addEventListener('DOMContentLoaded', function() {
   const taskListElement = document.getElementById('taskList');
   const taskListContainerElement = document.getElementById('taskListContainer');
   const averageValueElement = document.getElementById('averageValue');
+  const averageSubElement = document.getElementById('averageSub');
+  const averageBarElement = document.getElementById('averageBar');
   const defaultGradeBtnElement = document.getElementById('defaultGradeBtn');
   const clearGradesBtnElement = document.getElementById('clearGradesBtn');
   const reloadContainerElement = document.getElementById('reloadContainer');
-  
-  // Storage key for localStorage
+
+  // Chave do localStorage para as notas definidas manualmente pelo usuário
   const STORAGE_KEY = 'academicGradeExtension_grades';
-  
+  // Chave do chrome.storage.local onde o content script salva as notas capturadas
+  const CAPTURED_KEY = 'academicGradeExtension_capturedTasks';
+  // Chave do grupo selecionado e fatores de ajuste da média final por grupo
+  const GROUP_KEY = 'academicGradeExtension_group';
+  const GROUP_FACTORS = { A: 1.05, B: 1.0, C: 0.95, D: 0.90, E: 0.85 };
+  const GROUP_LABELS = { A: '+5%', B: 'sem ajuste', C: '−5%', D: '−10%', E: '−15%' };
+
+  const groupSegElement = document.getElementById('groupSeg');
+  const groupEffectElement = document.getElementById('groupEffect');
+
+  // Estado: grupo selecionado e tarefas atualmente exibidas (para recalcular)
+  let selectedGroup = getSelectedGroup();
+  let currentTasks = [];
+
   // Inicialmente, esconder a lista de tarefas
   taskListContainerElement.style.display = 'none';
   messageElement.style.display = 'flex';
@@ -17,18 +32,52 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('averageContainer').style.display = 'block';
   document.getElementById('defaultGradeBtn').style.display = 'block';
   document.getElementById('clearGradesBtn').style.display = 'block';
-  
-  // Formatar número para 2 casas decimais exatamente como no código de referência
+
+  // Formatar número para 2 casas decimais
   function formatNumberTruncated(number) {
-    // Converter para string com exatamente 2 casas decimais, usando toFixed que arredonda
-    // Isso corresponde ao método usado no código de referência
     return number.toFixed(2);
   }
-  
+
+  // Formatar peso: inteiro quando possível (ex.: 4), senão 1 casa (ex.: 2.5)
+  function formatWeight(weight) {
+    const w = Number(weight) || 0;
+    return Number.isInteger(w) ? String(w) : w.toFixed(1);
+  }
+
+  // Grupo selecionado (default B). Persistido no localStorage do popup.
+  function getSelectedGroup() {
+    const g = localStorage.getItem(GROUP_KEY);
+    return GROUP_FACTORS[g] ? g : 'B';
+  }
+
+  function saveSelectedGroup(group) {
+    localStorage.setItem(GROUP_KEY, group);
+  }
+
+  // Marca visualmente o botão do grupo ativo
+  function setActiveGroupButton(group) {
+    groupSegElement.querySelectorAll('button').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.group === group);
+    });
+  }
+
+  // Liga o seletor de grupo: ao trocar, salva e recalcula a média
+  function initGroupSelector() {
+    setActiveGroupButton(selectedGroup);
+    groupSegElement.addEventListener('click', function(event) {
+      const btn = event.target.closest('button[data-group]');
+      if (!btn) return;
+      selectedGroup = btn.dataset.group;
+      saveSelectedGroup(selectedGroup);
+      setActiveGroupButton(selectedGroup);
+      calculateAndDisplayAverage(currentTasks);
+    });
+  }
+
   // Função para salvar grades no localStorage
   function saveGradesToLocalStorage(tasks) {
     const gradesData = {};
-    
+
     tasks.forEach(task => {
       // Usar o nome da tarefa como chave para identificá-la
       if (task.name) {
@@ -39,173 +88,55 @@ document.addEventListener('DOMContentLoaded', function() {
         };
       }
     });
-    
+
     localStorage.setItem(STORAGE_KEY, JSON.stringify(gradesData));
   }
-  
+
   // Função para buscar notas do localStorage
   function getGradesFromLocalStorage() {
     const storedData = localStorage.getItem(STORAGE_KEY);
     return storedData ? JSON.parse(storedData) : {};
   }
-  
-  // Função para buscar tarefas da página atual
-  function fetchTasks() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      const activeTab = tabs[0];
-      
-      // Verificar se podemos usar chrome.scripting
-      if (chrome.scripting && chrome.scripting.executeScript) {
-        // Usar chrome.scripting para extensões MV3
-        chrome.scripting.executeScript({
-          target: {tabId: activeTab.id},
-          function: extractTasksFromPage
-        }).then(handleResults).catch(handleScriptingError);
-      } else {
-        // Usar chrome.tabs para extensões MV2
-        chrome.tabs.executeScript(
-          activeTab.id,
-          {code: `(${extractTasksFromPage.toString()})();`},
-          handleResults
-        );
+
+  // Carrega as notas capturadas em background pelo content script e exibe.
+  function loadFromStorage() {
+    chrome.storage.local.get(CAPTURED_KEY, function(result) {
+      const captured = result[CAPTURED_KEY];
+
+      if (!captured || !captured.tasks || captured.tasks.length === 0) {
+        showNoData();
+        return;
       }
+
+      showTasks(captured.tasks);
     });
   }
-  
-  // Função para lidar com erros de scripting
-  function handleScriptingError(error) {
-    console.error("Erro de scripting:", error);
-    showError("Não foi possível acessar a página. Certifique-se que você está em uma página do academic-life.");
+
+  // Estado em que ainda não há notas capturadas: orienta o usuário.
+  function showNoData() {
+    messageElement.style.display = 'none';
+    taskListContainerElement.style.display = 'none';
+    reloadContainerElement.style.display = 'block';
+    document.getElementById('averageContainer').style.display = 'none';
+    document.getElementById('defaultGradeBtn').style.display = 'none';
+    document.getElementById('clearGradesBtn').style.display = 'none';
   }
-  
-  // Função executada na página para extrair tarefas
-  function extractTasksFromPage() {
-    // Buscar a tabela na página
-    const table = document.querySelector('table.table-grade');
-    
-    if (!table) {
-      // Se não encontrou a tabela, tentar buscar de outras formas
-      const possibleTablesWithGrades = document.querySelectorAll('table');
-      let gradeTableFound = false;
-      let foundTable = null;
-      
-      for (const possibleTable of possibleTablesWithGrades) {
-        // Verificar se esta tabela contém células que parecem notas
-        if (possibleTable.textContent.includes('Nota') || 
-            possibleTable.textContent.includes('Peso') || 
-            possibleTable.querySelector('th')?.textContent.includes('Atividade')) {
-          gradeTableFound = true;
-          foundTable = possibleTable;
-          break;
-        }
-      }
-      
-      if (!gradeTableFound) {
-        return { found: false };
-      }
-      
-      // Se encontrou uma tabela alternativa, use-a
-      if (foundTable) {
-        const rows = foundTable.querySelectorAll('tbody tr');
-        if (!rows || rows.length === 0) {
-          return { found: false };
-        }
-        
-        const tasks = extractTasksFromRows(rows);
-        return { found: true, tasks };
-      }
-      
-      return { found: false };
-    }
-    
-    // Se chegou até aqui, a tabela foi encontrada
-    const rows = table.querySelectorAll('tbody tr');
-    const tasks = extractTasksFromRows(rows);
-    
-    return { found: true, tasks };
-    
-    // Função interna para extrair dados das linhas
-    function extractTasksFromRows(rows) {
-      const tasks = [];
-      
-      rows.forEach(row => {
-        const cells = row.querySelectorAll('td');
-        if (cells.length < 5) return; // Pular linhas sem células suficientes
-        
-        const nameCell = cells[0];
-        const weekCell = cells[1];
-        const statusCell = cells[2];
-        const weightCell = cells[3]; // Corrigido: peso está no índice 3, não no 1
-        const gradeCell = cells[4];
-        
-        if (nameCell && weightCell && statusCell && gradeCell) {
-          const name = nameCell.textContent.trim();
-          const weight = parseFloat(weightCell.textContent.trim().replace(',', '.')) || 0;
-          const status = statusCell.textContent.trim();
-          const week = weekCell ? weekCell.textContent.trim() : '';
-          const grade = gradeCell.textContent.trim() !== '-' ? 
-            parseFloat(gradeCell.textContent.trim().replace(',', '.')) : null;
-          
-          tasks.push({
-            name,
-            weight,
-            status,
-            week,
-            grade
-          });
-        }
-      });
-      
-      return tasks;
-    }
-  }
-  
-  // Função para lidar com os resultados da extração
-  function handleResults(results) {
-    if (!results || results.length === 0 || !results[0]) {
-      showError("Erro ao extrair tarefas da página.");
-      return;
-    }
-    
-    // Ajustar para compatibilidade com MV2 e MV3
-    const data = results[0].result || results[0];
-    
-    if (!data) {
-      showError("Erro ao extrair tarefas da página.");
-      return;
-    }
-    
-    if (!data.found) {
-      // Tabela não encontrada, mostrar mensagem e botão de recarregar
-      messageElement.style.display = 'none';
-      taskListContainerElement.style.display = 'none';
-      reloadContainerElement.style.display = 'block';
-      document.getElementById('averageContainer').style.display = 'none';
-      document.getElementById('defaultGradeBtn').style.display = 'none';
-      document.getElementById('clearGradesBtn').style.display = 'none';
-      return;
-    }
-    
-    const tasks = data.tasks;
-    
-    if (!tasks || tasks.length === 0) {
-      showError("Nenhuma tarefa encontrada na página.");
-      return;
-    }
-    
-    // Buscar notas salvas do localStorage
+
+  // Recebe as tarefas capturadas, mescla com as notas manuais e renderiza.
+  function showTasks(capturedTasks) {
+    // Clonar para não mutar o objeto vindo do storage
+    const tasks = capturedTasks.map(t => ({ ...t }));
+
+    // Buscar notas salvas manualmente do localStorage
     const savedGrades = getGradesFromLocalStorage();
-    
-    // Atualizar as tarefas com as notas salvas
+
     tasks.forEach(task => {
       // Salvar a nota original da tabela
       task.originalGrade = task.grade;
-      
-      // Lógica de Prioridade: A nota oficial (da página) SEMPRE prevalece sobre o localStorage
-      if (task.originalGrade !== null) {
-        // Se existe nota oficial, usamos ela e desmarcamos o manuallySet
+
+      // Lógica de Prioridade: a nota oficial (da página) SEMPRE prevalece
+      if (task.originalGrade !== null && task.originalGrade !== undefined) {
         task.manuallySet = false;
-        // task.grade já vem preenchido corretamente da extração
       } else {
         // Se NÃO existe nota oficial, verificamos se o usuário salvou algo
         if (savedGrades[task.name]) {
@@ -215,24 +146,22 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
 
-    // Salvar o estado atualizado no localStorage
-    // Isso garante que se uma nota oficial saiu, o localStorage seja corrigido (removendo a nota manual antiga)
+    // Persistir o estado mesclado (corrige notas manuais antigas quando a
+    // nota oficial passa a existir)
     saveGradesToLocalStorage(tasks);
-    
+
     renderTasks(tasks);
     calculateAndDisplayAverage(tasks);
-    
-    // Esconder mensagem e mostrar lista de tarefas
+
+    // Mostrar lista de tarefas
     messageElement.style.display = 'none';
+    reloadContainerElement.style.display = 'none';
     taskListContainerElement.style.display = 'block';
+    document.getElementById('averageContainer').style.display = 'block';
+    document.getElementById('defaultGradeBtn').style.display = 'block';
+    document.getElementById('clearGradesBtn').style.display = 'block';
   }
-  
-  // Função para mostrar mensagem de erro
-  function showError(message) {
-    messageElement.innerHTML = `<div class="alert alert-warning">${message}</div>`;
-    messageElement.style.display = 'block';
-  }
-  
+
   // Função para renderizar as tarefas
   function renderTasks(tasks) {
     // Salvar o elemento que tem foco atualmente para tentar restaurar (se possível)
@@ -240,48 +169,67 @@ document.addEventListener('DOMContentLoaded', function() {
     const focusedIndex = activeElement && activeElement.classList.contains('grade-input') ? activeElement.dataset.index : null;
 
     taskListElement.innerHTML = '';
-    
+
+    // Agrupar mantendo o índice original (usado pelos inputs e pelo cálculo)
+    const groups = {};
     tasks.forEach((task, index) => {
-      const taskElement = document.createElement('div');
-      taskElement.className = 'task-item';
-      
-      const statusClass = task.status.toLowerCase().replace(' ', '-');
-      
-      // Verificar se a tarefa tem uma nota original (da tabela)
-      const hasOriginalGrade = task.originalGrade !== null;
-      
-      // Criar classe adicional para o container do input, se for readonly
-      const inputContainerClass = hasOriginalGrade ? 'grade-input-container locked' : 'grade-input-container';
-      
-      taskElement.innerHTML = `
-        <div class="task-header">
-          <div class="task-name">${task.name}</div>
-          <div class="task-grade-container">
-            <div class="${inputContainerClass}">
-              <input type="number" class="grade-input" 
-                value="${task.grade !== null ? task.grade : ''}" 
-                placeholder="-" 
-                data-index="${index}" 
-                data-original="${task.originalGrade !== null ? task.originalGrade : ''}"
-                min="0" max="10" step="0.01"
-                ${hasOriginalGrade ? 'readonly' : ''}>
-            </div>
-          </div>
-        </div>
-        <div class="task-details">
-          <div class="task-weight">Peso: ${task.weight}</div>
-          <div class="task-status status-${statusClass}">${task.status}</div>
+      const cat = task.category || 'Ponderada';
+      (groups[cat] = groups[cat] || []).push({ task, index });
+    });
+
+    // Ordem e rótulos das categorias
+    const order = ['Artefato', 'Ponderada', 'Prova'];
+    const labels = { Artefato: 'Artefatos', Ponderada: 'Atividades Ponderadas', Prova: 'Prova' };
+
+    order.forEach(cat => {
+      const items = groups[cat];
+      if (!items || items.length === 0) return;
+
+      const totalWeight = items.reduce((sum, it) => sum + (it.task.weight || 0), 0);
+
+      const section = document.createElement('div');
+      section.className = 'group group-' + cat.toLowerCase();
+      section.innerHTML = `
+        <div class="group-header">
+          <span class="group-title">${labels[cat]}</span>
+          <span class="group-weight">peso total ${formatWeight(totalWeight)}</span>
         </div>
       `;
-      
-      taskListElement.appendChild(taskElement);
+
+      items.forEach(({ task, index }) => {
+        const statusClass = task.status.toLowerCase().replace(/ /g, '-');
+        const hasOriginalGrade = task.originalGrade !== null && task.originalGrade !== undefined;
+
+        const item = document.createElement('div');
+        item.className = 'task-item';
+        item.innerHTML = `
+          <div class="task-top">
+            <div class="task-name">${task.name}</div>
+            <input type="number" class="grade-input"
+              value="${task.grade !== null && task.grade !== undefined ? task.grade : ''}"
+              placeholder="–"
+              data-index="${index}"
+              data-original="${hasOriginalGrade ? task.originalGrade : ''}"
+              min="0" max="10" step="0.01"
+              ${hasOriginalGrade ? 'readonly' : ''}>
+          </div>
+          <div class="task-meta">
+            <span class="weight-badge">peso <b>${formatWeight(task.weight)}</b></span>
+            ${task.week ? `<span class="week">${task.week}</span>` : ''}
+            <span class="task-status status-${statusClass}">${task.status}</span>
+          </div>
+        `;
+        section.appendChild(item);
+      });
+
+      taskListElement.appendChild(section);
     });
-    
+
     // Adicionar event listeners para os inputs de nota
     document.querySelectorAll('.grade-input').forEach(input => {
       // Se havia um input focado e é este o índice, restaurar o foco
       if (focusedIndex && input.dataset.index === focusedIndex) {
-          input.focus();
+        input.focus();
       }
 
       // Só adicionar event listener para inputs que não são readonly
@@ -289,115 +237,111 @@ document.addEventListener('DOMContentLoaded', function() {
         input.addEventListener('input', function() {
           const index = parseInt(this.dataset.index);
           const newGrade = this.value !== '' ? parseFloat(this.value) : null;
-          
+
           tasks[index].grade = newGrade;
           tasks[index].manuallySet = true; // Marcar que esta nota foi definida manualmente
-          
+
           calculateAndDisplayAverage(tasks);
           saveGradesToLocalStorage(tasks); // Salvar as alterações no localStorage
         });
       }
     });
   }
-  
+
   // Calcular e exibir a média
   function calculateAndDisplayAverage(tasks) {
-    let totalWeight = 0;
+    currentTasks = tasks; // guardar para recalcular ao trocar de grupo
+
+    let totalWeight = 0;       // soma dos pesos de TODAS as atividades
+    let gradedWeight = 0;      // soma dos pesos das atividades com nota
     let weightedSum = 0;
-    
+
     tasks.forEach(task => {
-      if (task.grade !== null) {
-        totalWeight += task.weight;
+      totalWeight += task.weight;
+      if (task.grade !== null && task.grade !== undefined) {
+        gradedWeight += task.weight;
         weightedSum += task.grade * task.weight;
       }
     });
-    
-    const average = totalWeight > 0 ? weightedSum / totalWeight : 0;
-    
-    // Formatar a média para 2 casas decimais
-    const formattedAverage = formatNumberTruncated(average);
-    
-    // Atualizar o texto da média
-    averageValueElement.textContent = formattedAverage;
-    
-    // Atualizar a cor da média com base no valor
-    updateAverageColor(parseFloat(formattedAverage));
+
+    const baseAverage = gradedWeight > 0 ? weightedSum / gradedWeight : 0;
+
+    // Ajuste do grupo sobre a média final (limitado a 0–10)
+    const factor = GROUP_FACTORS[selectedGroup] || 1;
+    const finalAverage = Math.max(0, Math.min(10, baseAverage * factor));
+
+    averageValueElement.textContent = formatNumberTruncated(finalAverage);
+
+    // Rótulo do grupo ao lado de "Média final"
+    groupEffectElement.textContent = `· Grupo ${selectedGroup} (${GROUP_LABELS[selectedGroup]})`;
+
+    // Destaque dos pesos: quanto do total de pesos já foi avaliado
+    const pct = totalWeight > 0 ? Math.round((gradedWeight / totalWeight) * 100) : 0;
+    let sub = `${formatWeight(gradedWeight)} de ${formatWeight(totalWeight)} em pesos avaliados (${pct}%)`;
+    // Quando há ajuste, mostrar a média base antes do ajuste
+    if (factor !== 1) {
+      sub = `base ${formatNumberTruncated(baseAverage)} → ${formatNumberTruncated(finalAverage)} · ${sub}`;
+    }
+    averageSubElement.textContent = sub;
+
+    updateAverageColor(finalAverage);
   }
-  
-  // Função para atualizar a cor da média
+
+  // Função para atualizar a cor da média e a barra de progresso
   function updateAverageColor(average) {
-    if (average >= 7) {
-      // Acima da média - verde
-      averageValueElement.style.color = '#28a745';
-    } else {
-      // Abaixo da média - vermelho
-      averageValueElement.style.color = '#dc3545';
+    const color = average >= 7 ? 'var(--green)' : 'var(--red)';
+    averageValueElement.style.color = color;
+    if (averageBarElement) {
+      averageBarElement.style.width = Math.max(0, Math.min(100, average * 10)) + '%';
+      averageBarElement.style.background = color;
     }
   }
-  
+
   // Event listener para o botão de atribuir nota 7
   defaultGradeBtnElement.addEventListener('click', function() {
-    // Recuperar as tarefas originais, que já contêm os pesos corretos
     const taskItems = document.querySelectorAll('.task-item');
-    let tasksChanged = false;
-    
-    // Iterar sobre cada item da tarefa
-    taskItems.forEach((item, index) => {
+
+    taskItems.forEach((item) => {
       const input = item.querySelector('.grade-input');
-      const taskName = item.querySelector('.task-name').textContent;
-      const weightElement = item.querySelector('.task-weight');
-      
-      // Extrair o peso da tarefa
-      let weight = 0;
-      if (weightElement && weightElement.textContent) {
-        // Extrai apenas o número do texto "Peso: X"
-        const weightMatch = weightElement.textContent.match(/Peso:\s*(\d*\.?\d*)/);
-        if (weightMatch && weightMatch[1]) {
-          weight = parseFloat(weightMatch[1]) || 0;
-        }
-      }
-      
-      // Se o input estiver vazio, preencher com 7
-      if (input && input.value === '') {
+
+      // Se o input estiver vazio (e editável), preencher com 7
+      if (input && !input.hasAttribute('readonly') && input.value === '') {
         input.value = '7';
-        
+
         // Disparar evento de input para atualizar os dados
         const inputEvent = new Event('input', { bubbles: true });
         input.dispatchEvent(inputEvent);
-        
-        tasksChanged = true;
       }
     });
-    
-    // Se houve alterações, a média e o localStorage já foram atualizados pelos eventos de input
   });
-  
+
   // Event listener para o botão de limpar notas
   clearGradesBtnElement.addEventListener('click', function() {
-    // Recuperar as tarefas com os inputs na página
     const taskItems = document.querySelectorAll('.task-item');
-    let tasksChanged = false;
-    
-    // Iterar sobre cada item da tarefa
-    taskItems.forEach((item, index) => {
+
+    taskItems.forEach((item) => {
       const input = item.querySelector('.grade-input');
-      
+
       // Pular inputs readonly (que já têm nota na tabela)
       if (input && !input.hasAttribute('readonly')) {
         input.value = '';
-        
+
         // Disparar evento de input para atualizar os dados
         const inputEvent = new Event('input', { bubbles: true });
         input.dispatchEvent(inputEvent);
-        
-        tasksChanged = true;
       }
     });
   });
-  
-  // Iniciar o processo de busca de tarefas
-  fetchTasks();
 
-  // Atualização periódica a cada 5 minutos (300000 ms)
-  setInterval(fetchTasks, 300000);
+  // Atualização ao vivo: se o content script capturar novas notas enquanto o
+  // popup está aberto, recarrega automaticamente.
+  chrome.storage.onChanged.addListener(function(changes, areaName) {
+    if (areaName === 'local' && changes[CAPTURED_KEY]) {
+      loadFromStorage();
+    }
+  });
+
+  // Ligar o seletor de grupo (A–E) e carregar os dados capturados em background
+  initGroupSelector();
+  loadFromStorage();
 });
